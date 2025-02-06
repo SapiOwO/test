@@ -136,7 +136,7 @@ elif visualization == "K-Means Clustering":
 # AI Chat Section
 # -------------------------------
 st.markdown("---")
-st.header("AI Chat with Ollama")
+st.header("Ask Mewo A.I. about the Data")
 user_prompt = st.text_area("Enter your question about the data:")
 
 include_context = st.checkbox("Include CSV context (first 3 rows)", value=True)
@@ -148,5 +148,5 @@ if st.button("Submit Query"):
     st.subheader("AI Response:")
     st.write(ai_response)
 
-st.write("🚀 Ollama is running locally. Ensure the model is installed and the server is active!")
+st.write("AI is running on local machine!")
 
