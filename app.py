@@ -7,9 +7,7 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 import requests  # For interacting with Ollama
 
-# -------------------------------
 # File Uploader to Choose CSV File
-# -------------------------------
 st.sidebar.title("Upload or Use Default CSV")
 uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type=["csv"])
 
@@ -26,9 +24,7 @@ else:
 
 df.columns = [f"Feature_{i}" for i in range(df.shape[1])]
 
-# -------------------------------
 # Sidebar: Data Transformations & Filtering
-# -------------------------------
 st.sidebar.header("Data Transformations")
 normalize = st.sidebar.checkbox("Normalize Data")
 standardize = st.sidebar.checkbox("Standardize Data")
@@ -48,10 +44,7 @@ df_filtered = df[(df[selected_feature] >= filter_range[0]) & (df[selected_featur
 use_filtered = st.sidebar.checkbox("Use Filtered Data", value=False)
 data = df_filtered.copy() if use_filtered else df.copy()
 
-# -------------------------------
 # Visualization Functions
-# -------------------------------
-
 def plot_heatmap():
     st.subheader("Heatmap of Dataset")
     plt.figure(figsize=(12, 5))
@@ -85,9 +78,7 @@ def plot_kmeans_clusters():
     plt.title(f"K-Means Clustering with {num_clusters} Clusters")
     st.pyplot(plt.gcf())
 
-# -------------------------------
 # AI Integration with Ollama (Fixed)
-# -------------------------------
 OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Make sure Ollama is running!
 
 def query_ollama(prompt, data_context):
@@ -108,46 +99,46 @@ def query_ollama(prompt, data_context):
     except requests.exceptions.RequestException as e:
         return f"Error connecting to Ollama: {e}"
 
-# -------------------------------
 # Streamlit UI
-# -------------------------------
 st.title("Data Visualization & AI Chat")
 
-st.write("### Dataset Overview")
-st.dataframe(data.head())
-st.write("### Descriptive Statistics")
-st.dataframe(data.describe().T)
+# Create two columns
+col1, col2 = st.columns([2, 1])
 
-# Visualization Selection
-visualization = st.selectbox("Choose a visualization", [
-    "Heatmap",
-    "PCA Scatter Plot",
-    "K-Means Clustering"
-])
+# Left column for visualizations
+with col1:
+    st.write("### Dataset Overview")
+    st.dataframe(data.head())
+    st.write("### Descriptive Statistics")
+    st.dataframe(data.describe().T)
 
-if visualization == "Heatmap":
-    plot_heatmap()
-elif visualization == "PCA Scatter Plot":
-    plot_pca()
-elif visualization == "K-Means Clustering":
-    plot_kmeans_clusters()
+    # Visualization Selection
+    visualization = st.selectbox("Choose a visualization", [
+        "Heatmap",
+        "PCA Scatter Plot",
+        "K-Means Clustering"
+    ])
 
-# -------------------------------
-# AI Chat Section
-# -------------------------------
-st.markdown("---")
-st.header("Ask Mewo A.I. about the Data")
-user_prompt = st.text_area("Enter your question about the data:")
+    if visualization == "Heatmap":
+        plot_heatmap()
+    elif visualization == "PCA Scatter Plot":
+        plot_pca()
+    elif visualization == "K-Means Clustering":
+        plot_kmeans_clusters()
 
-include_context = st.checkbox("Include CSV context (first 3 rows)", value=True)
-data_context = data.head(3).to_csv(index=False) if include_context else ""
+# Right column for AI chat
+with col2:
+    st.markdown("---")
+    st.header("Ask Mewo A.I. about the Data")
+    user_prompt = st.text_area("Enter your question about the data:")
 
-if st.button("Submit Query"):
-    with st.spinner("Thinking..."):
-        ai_response = query_ollama(user_prompt, data_context)
-    st.subheader("AI Response:")
-    st.write(ai_response)
+    include_context = st.checkbox("Include CSV context (first 3 rows)", value=True)
+    data_context = data.head(3).to_csv(index=False) if include_context else ""
+
+    if st.button("Submit Query"):
+        with st.spinner("Thinking..."):
+            ai_response = query_ollama(user_prompt, data_context)
+        st.subheader("AI Response:")
+        st.write(ai_response)
 
 st.write("AI is running on local machine!")
-
-st.write("")
