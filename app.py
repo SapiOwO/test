@@ -1,65 +1,152 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plts
+import numpy as np
+import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+import requests  # For interacting with Ollama
 
-# Streamlit Page Title
-st.title("CSV Data Visualization")
-
-# File Upload
-uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+# -------------------------------
+# File Uploader to Choose CSV File
+# -------------------------------
+st.sidebar.title("Upload or Use Default CSV")
+uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type=["csv"])
 
 if uploaded_file:
-    # Load the CSV file
-    df = pd.read_csv(uploaded_file)
+    df = pd.read_csv(uploaded_file, header=None)
+else:
+    # Default CSV file
+    file_path = "data.csv"
+    try:
+        df = pd.read_csv(file_path, header=None)
+    except FileNotFoundError:
+        st.error("No CSV file uploaded, and default file 'data.csv' not found!")
+        st.stop()
 
-    # Convert column names to strings (if necessary)
-    df.columns = df.columns.astype(str)
+df.columns = [f"Feature_{i}" for i in range(df.shape[1])]
 
-    # Ensure only numeric columns are used
-    df = df.select_dtypes(include=['number'])
+# -------------------------------
+# Sidebar: Data Transformations & Filtering
+# -------------------------------
+st.sidebar.header("Data Transformations")
+normalize = st.sidebar.checkbox("Normalize Data")
+standardize = st.sidebar.checkbox("Standardize Data")
 
-    # Select a subset of the data for visualization (first 10 numeric columns)
-    df_subset = df.iloc[:, :10]
+if normalize:
+    df = (df - df.min()) / (df.max() - df.min())
+elif standardize:
+    df = (df - df.mean()) / df.std()
 
-    # Show dataset preview
-    st.write("### Data Preview", df.head())
+st.sidebar.header("Data Filtering")
+selected_feature = st.sidebar.selectbox("Select Feature to Filter", df.columns)
+min_val, max_val = df[selected_feature].min(), df[selected_feature].max()
+filter_range = st.sidebar.slider(f"Select range for {selected_feature}", min_val, max_val, (min_val, max_val))
 
-    # Line Chart
-    st.write("### Line Chart (First 10 Features)")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for col in df_subset.columns:
-        ax.plot(df_subset.index, df_subset[col], label=col)
-    ax.legend()
-    ax.set_title("Line Chart of First 10 Features")
-    ax.set_xlabel("Index")
-    ax.set_ylabel("Value")
-    st.pyplot(fig)  # Render in Streamlit
+# Apply filtering
+df_filtered = df[(df[selected_feature] >= filter_range[0]) & (df[selected_feature] <= filter_range[1])]
+use_filtered = st.sidebar.checkbox("Use Filtered Data", value=False)
+data = df_filtered.copy() if use_filtered else df.copy()
 
-    # Bar Chart (Mean values of first 10 columns)
-    st.write("### Bar Chart (Mean Values of First 10 Features)")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    df_subset.mean().plot(kind='bar', color='skyblue', ax=ax)
-    ax.set_title("Bar Chart of Mean Values (First 10 Features)")
-    ax.set_xlabel("Features")
-    ax.set_ylabel("Mean Value")
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+# -------------------------------
+# Visualization Functions
+# -------------------------------
 
-    # Scatter Plot (First two columns, if available)
-    if df_subset.shape[1] >= 2:
-        st.write(f"### Scatter Plot: {df_subset.columns[0]} vs {df_subset.columns[1]}")
-        fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(df_subset.iloc[:, 0], df_subset.iloc[:, 1], alpha=0.5, color='red')
-        ax.set_title(f"Scatter Plot: {df_subset.columns[0]} vs {df_subset.columns[1]}")
-        ax.set_xlabel(df_subset.columns[0])
-        ax.set_ylabel(df_subset.columns[1])
-        st.pyplot(fig)
+def plot_heatmap():
+    st.subheader("Heatmap of Dataset")
+    plt.figure(figsize=(12, 5))
+    sns.heatmap(data, cmap="coolwarm", annot=False, cbar=True)
+    st.pyplot(plt.gcf())
 
-    # Heatmap (First 10 Columns)
-    st.write("### Heatmap (First 10 Features Correlation)")
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.heatmap(df_subset.corr(), annot=True, cmap="coolwarm", fmt=".2f", linewidths=0.5, ax=ax)
-    ax.set_title("Heatmap of First 10 Features")
-    st.pyplot(fig)
+def plot_pca():
+    st.subheader("PCA Scatter Plot")
+    data_transposed = data.T
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(data_transposed)
+    pca_df = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
+    plt.figure(figsize=(8, 5))
+    sns.scatterplot(x='PC1', y='PC2', data=pca_df)
+    st.pyplot(plt.gcf())
+
+def plot_kmeans_clusters():
+    st.subheader("K-Means Clustering")
+    num_clusters = st.slider("Select Number of Clusters", 2, 10, 3, key="kmeans_slider")
+    data_transposed = data.T
+    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+    labels = kmeans.fit_predict(data_transposed)
+    
+    pca = PCA(n_components=2)
+    pca_result = pca.fit_transform(data_transposed)
+    pca_df = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
+    pca_df['Cluster'] = labels
+
+    plt.figure(figsize=(8, 5))
+    sns.scatterplot(x='PC1', y='PC2', hue='Cluster', data=pca_df, palette='viridis')
+    plt.title(f"K-Means Clustering with {num_clusters} Clusters")
+    st.pyplot(plt.gcf())
+
+# -------------------------------
+# AI Integration with Ollama (Fixed)
+# -------------------------------
+OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Make sure Ollama is running!
+
+def query_ollama(prompt, data_context):
+    """
+    Query Ollama API with a prompt that includes CSV data context.
+    """
+    full_prompt = f"CSV Data Sample (first 3 rows):\n{data_context}\n\nUser Query:\n{prompt}"
+    payload = {
+        "model": "gemma2:9b-instruct-q4_K_M",  # Change to your installed Ollama model
+        "prompt": full_prompt,
+        "stream": False
+    }
+    
+    try:
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=30)
+        response.raise_for_status()
+        return response.json().get("response", "No response returned.")
+    except requests.exceptions.RequestException as e:
+        return f"Error connecting to Ollama: {e}"
+
+# -------------------------------
+# Streamlit UI
+# -------------------------------
+st.title("Data Visualization & AI Chat")
+
+st.write("### Dataset Overview")
+st.dataframe(data.head())
+st.write("### Descriptive Statistics")
+st.dataframe(data.describe().T)
+
+# Visualization Selection
+visualization = st.selectbox("Choose a visualization", [
+    "Heatmap",
+    "PCA Scatter Plot",
+    "K-Means Clustering"
+])
+
+if visualization == "Heatmap":
+    plot_heatmap()
+elif visualization == "PCA Scatter Plot":
+    plot_pca()
+elif visualization == "K-Means Clustering":
+    plot_kmeans_clusters()
+
+# -------------------------------
+# AI Chat Section
+# -------------------------------
+st.markdown("---")
+st.header("AI Chat with Ollama")
+user_prompt = st.text_area("Enter your question about the data:")
+
+include_context = st.checkbox("Include CSV context (first 3 rows)", value=True)
+data_context = data.head(3).to_csv(index=False) if include_context else ""
+
+if st.button("Submit Query"):
+    with st.spinner("Thinking..."):
+        ai_response = query_ollama(user_prompt, data_context)
+    st.subheader("AI Response:")
+    st.write(ai_response)
+
+st.write("🚀 Ollama is running locally. Ensure the model is installed and the server is active!")
 
