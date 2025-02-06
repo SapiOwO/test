@@ -150,3 +150,4 @@ if st.button("Submit Query"):
 
 st.write("AI is running on local machine!")
 
+st.write("")
