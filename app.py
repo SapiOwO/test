@@ -8,9 +8,10 @@ from sklearn.cluster import KMeans
 import requests  # For interacting with Ollama
 
 # File Uploader to Choose CSV File
-st.sidebar.title("Upload or Use Default CSV")
-uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type=["csv"])
+st.sidebar.title("Data Upload and Configuration")
+uploaded_file = st.sidebar.file_uploader("Upload a CSV file", type=["csv"])
 
+# Check if file is uploaded
 if uploaded_file:
     df = pd.read_csv(uploaded_file, header=None)
 else:
@@ -22,18 +23,21 @@ else:
         st.error("No CSV file uploaded, and default file 'data.csv' not found!")
         st.stop()
 
+# Assign column names
 df.columns = [f"Feature_{i}" for i in range(df.shape[1])]
 
-# Sidebar: Data Transformations & Filtering
+# Sidebar: Data Transformations
 st.sidebar.header("Data Transformations")
 normalize = st.sidebar.checkbox("Normalize Data")
 standardize = st.sidebar.checkbox("Standardize Data")
 
+# Apply data transformations
 if normalize:
     df = (df - df.min()) / (df.max() - df.min())
 elif standardize:
     df = (df - df.mean()) / df.std()
 
+# Sidebar: Data Filtering
 st.sidebar.header("Data Filtering")
 selected_feature = st.sidebar.selectbox("Select Feature to Filter", df.columns)
 min_val, max_val = df[selected_feature].min(), df[selected_feature].max()
@@ -78,6 +82,35 @@ def plot_kmeans_clusters():
     plt.title(f"K-Means Clustering with {num_clusters} Clusters")
     st.pyplot(plt.gcf())
 
+def plot_correlation_matrix():
+    st.subheader("Correlation Matrix")
+    corr = data.corr()
+    plt.figure(figsize=(12, 5))
+    sns.heatmap(corr, annot=True, cmap="coolwarm", cbar=True)
+    st.pyplot(plt.gcf())
+
+def plot_histogram():
+    st.subheader("Histogram")
+    selected_feature = st.selectbox("Select Feature for Histogram", data.columns)
+    plt.figure(figsize=(8, 5))
+    sns.histplot(data[selected_feature], bins=30, kde=True)
+    st.pyplot(plt.gcf())
+
+def plot_boxplot():
+    st.subheader("Box Plot")
+    selected_feature = st.selectbox("Select Feature for Box Plot", data.columns, key="boxplot_feature")
+    plt.figure(figsize=(8, 5))
+    sns.boxplot(y=data[selected_feature])
+    st.pyplot(plt.gcf())
+
+def plot_scatter():
+    st.subheader("Scatter Plot")
+    x_feature = st.selectbox("Select X-Axis Feature", data.columns, key="scatter_x")
+    y_feature = st.selectbox("Select Y-Axis Feature", data.columns, key="scatter_y")
+    plt.figure(figsize=(8, 5))
+    sns.scatterplot(x=x_feature, y=y_feature, data=data)
+    st.pyplot(plt.gcf())
+
 # AI Integration with Ollama (Fixed)
 OLLAMA_API_URL = "http://localhost:11434/api/generate"  # Make sure Ollama is running!
 
@@ -116,7 +149,11 @@ with col1:
     visualization = st.selectbox("Choose a visualization", [
         "Heatmap",
         "PCA Scatter Plot",
-        "K-Means Clustering"
+        "K-Means Clustering",
+        "Correlation Matrix",
+        "Histogram",
+        "Box Plot",
+        "Scatter Plot"
     ])
 
     if visualization == "Heatmap":
@@ -125,6 +162,14 @@ with col1:
         plot_pca()
     elif visualization == "K-Means Clustering":
         plot_kmeans_clusters()
+    elif visualization == "Correlation Matrix":
+        plot_correlation_matrix()
+    elif visualization == "Histogram":
+        plot_histogram()
+    elif visualization == "Box Plot":
+        plot_boxplot()
+    elif visualization == "Scatter Plot":
+        plot_scatter()
 
 # Right column for AI chat
 with col2:
