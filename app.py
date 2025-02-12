@@ -1,123 +1,117 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-import requests  # For interacting with Ollama
+import numpy as np
+from scipy.signal import spectrogram
 
-# File Uploader to Choose CSV File
-st.set_page_config(layout="wide")  # Enable wide layout
-st.title("Data Visualization & AI Chat")
+# Load CSV file without header
+df = pd.read_csv("selamat.csv", header=None)
 
-uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+# Convert dataframe to numpy array
+data = df.to_numpy()
 
-# Check if file is uploaded
-if uploaded_file:
-    df = pd.read_csv(uploaded_file, header=None)
-else:
-    file_path = "data.csv"
-    try:
-        df = pd.read_csv(file_path, header=None)
-    except FileNotFoundError:
-        st.error("No CSV file uploaded, and default file 'data.csv' not found!")
-        st.stop()
+# Streamlit App Title
+st.title("Signal Data Analysis")
 
-# Assign column names
-df.columns = [f"Feature_{i}" for i in range(df.shape[1])]
-data = df.copy()
+# Sidebar Menu
+st.sidebar.title("Menu")
+option = st.sidebar.selectbox("Select a visualization", 
+                              ["Dataset Overview", "Descriptive Statistics", "Line Plot", "Spectrogram", "Histogram", "Population vs Sample Analysis"])
 
-# Visualization Functions
-def plot_heatmap():
-    plt.figure(figsize=(12, 6))
-    sns.heatmap(data, cmap="coolwarm", annot=False, cbar=True)
-    st.pyplot(plt.gcf())
+if option == "Dataset Overview":
+    st.subheader("Dataset Overview")
+    st.write("Shape of the dataset:", df.shape)
+    st.write("First few rows of data:")
+    st.write(df.head())
 
-def plot_pca():
-    data_transposed = data.T
-    pca = PCA(n_components=2)
-    pca_result = pca.fit_transform(data_transposed)
-    pca_df = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
-    plt.figure(figsize=(12, 6))
-    sns.scatterplot(x='PC1', y='PC2', data=pca_df)
-    st.pyplot(plt.gcf())
+elif option == "Descriptive Statistics":
+    st.subheader("Descriptive Statistics")
+    st.write(pd.DataFrame(data).describe().T)
 
-def plot_kmeans_clusters():
-    num_clusters = st.slider("Select Number of Clusters", 2, 10, 3, key="kmeans_slider")
-    data_transposed = data.T
-    kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
-    labels = kmeans.fit_predict(data_transposed)
-    
-    pca = PCA(n_components=2)
-    pca_result = pca.fit_transform(data_transposed)
-    pca_df = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
-    pca_df['Cluster'] = labels
+elif option == "Line Plot":
+    st.subheader("Line Plot of Signal Amplitudes")
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.plot(data[0], label="Signal 1", alpha=0.7)
+    ax.plot(data[1], label="Signal 2", alpha=0.7)
+    ax.set_xlabel("Time (samples)")
+    ax.set_ylabel("Amplitude")
+    ax.set_title("Line Plot of Signal Amplitudes")
+    ax.legend()
+    st.pyplot(fig)
 
-    plt.figure(figsize=(12, 6))
-    sns.scatterplot(x='PC1', y='PC2', hue='Cluster', data=pca_df, palette='viridis')
-    st.pyplot(plt.gcf())
+elif option == "Spectrogram":
+    st.subheader("Spectrogram of Signal 1")
+    fs = 1  # Assuming a sampling frequency of 1 Hz
+    f, t, Sxx = spectrogram(data[0], fs)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    cax = ax.pcolormesh(t, f, 10 * np.log10(Sxx), shading='gouraud')
+    ax.set_ylabel("Frequency (Hz)")
+    ax.set_xlabel("Time (s)")
+    ax.set_title("Spectrogram of Signal 1")
+    fig.colorbar(cax, label="Power (dB)")
+    st.pyplot(fig)
 
-def plot_histogram():
-    selected_feature = st.selectbox("Select Feature for Histogram", data.columns)
-    plt.figure(figsize=(10, 6))
-    sns.histplot(data[selected_feature], kde=True, bins=30)
-    st.pyplot(plt.gcf())
+elif option == "Histogram":
+    st.subheader("Histogram of Signal Amplitudes")
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(data[0], bins=50, alpha=0.7, label="Signal 1", density=True)
+    ax.hist(data[1], bins=50, alpha=0.7, label="Signal 2", density=True)
+    ax.set_xlabel("Amplitude")
+    ax.set_ylabel("Density")
+    ax.set_title("Histogram of Signal Amplitudes")
+    ax.legend()
+    st.pyplot(fig)
 
-def plot_boxplot():
-    selected_feature = st.selectbox("Select Feature for Boxplot", data.columns, key="boxplot")
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(y=data[selected_feature])
-    st.pyplot(plt.gcf())
+elif option == "Population vs Sample Analysis":
+    st.subheader("Population vs Sample Analysis")
 
-# AI Integration with Ollama
-OLLAMA_API_URL = "http://localhost:11434/api/generate"
+    def calculate_population_sample_stats(data):
+        population_mean = np.mean(data)
+        sample_size = int(len(data) * 0.7)
+        sample = np.random.choice(data, size=sample_size, replace=False)
+        sample_mean = np.mean(sample)
+        sample_percentage = (sample_size / len(data)) * 100
+        population_percentage = 100 - sample_percentage
+        return population_mean, sample_mean, sample, population_percentage, sample_percentage
 
-def query_ollama(prompt, data_context):
-    full_prompt = f"CSV Data Sample (first 3 rows):\n{data_context}\n\nUser Query:\n{prompt}"
-    payload = {"model": "gemma2:9b-instruct-q4_K_M", "prompt": full_prompt, "stream": False}
-    
-    try:
-        response = requests.post(OLLAMA_API_URL, json=payload, timeout=30)
-        response.raise_for_status()
-        return response.json().get("response", "No response returned.")
-    except requests.exceptions.RequestException as e:
-        return f"Error connecting to Ollama: {e}"
+    pop_mean_1, samp_mean_1, sample_1, pop_perc_1, samp_perc_1 = calculate_population_sample_stats(data[0])
+    pop_mean_2, samp_mean_2, sample_2, pop_perc_2, samp_perc_2 = calculate_population_sample_stats(data[1])
 
-# Streamlit Layout
-col1, col2 = st.columns([2, 3])
+    st.write(f"Signal 1 - Population Mean: {pop_mean_1}, Sample Mean: {samp_mean_1}")
+    st.write(f"Signal 1 - Population: {pop_perc_1:.2f}%, Sample: {samp_perc_1:.2f}%")
+    st.write(f"Signal 2 - Population Mean: {pop_mean_2}, Sample Mean: {samp_mean_2}")
+    st.write(f"Signal 2 - Population: {pop_perc_2:.2f}%, Sample: {samp_perc_2:.2f}%")
 
-with col1:
-    st.write("### Dataset Overview")
-    st.dataframe(data.head())
-    st.write("### Descriptive Statistics")
-    st.dataframe(data.describe().T)
-    
-    st.write("### Select Visualization")
-    visualization = st.selectbox("Choose a visualization", [
-        "Heatmap", "PCA Scatter Plot", "K-Means Clustering", "Histogram", "Boxplot"
-    ])
-    
-    if visualization == "Heatmap":
-        plot_heatmap()
-    elif visualization == "PCA Scatter Plot":
-        plot_pca()
-    elif visualization == "K-Means Clustering":
-        plot_kmeans_clusters()
-    elif visualization == "Histogram":
-        plot_histogram()
-    elif visualization == "Boxplot":
-        plot_boxplot()
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(data[0], bins=50, alpha=0.5, label="Population Signal 1", density=True, color='blue')
+    ax.hist(sample_1, bins=50, alpha=0.7, label="Sample Signal 1", density=True, color='red')
+    ax.set_xlabel("Amplitude")
+    ax.set_ylabel("Density")
+    ax.set_title("Population vs Sample - Signal 1")
+    ax.legend()
+    st.pyplot(fig)
 
-with col2:
-    st.header("Ask Mewo A.I. about the Data")
-    user_prompt = st.text_area("Enter your question about the data:")
-    
-    include_context = st.checkbox("Include CSV context (first 3 rows)", value=True)
-    data_context = data.head(3).to_csv(index=False) if include_context else ""
-    
-    if st.button("Submit Query"):
-        with st.spinner("Thinking..."):
-            ai_response = query_ollama(user_prompt, data_context)
-        st.subheader("AI Response:")
-        st.write(ai_response)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.hist(data[1], bins=50, alpha=0.5, label="Population Signal 2", density=True, color='green')
+    ax.hist(sample_2, bins=50, alpha=0.7, label="Sample Signal 2", density=True, color='orange')
+    ax.set_xlabel("Amplitude")
+    ax.set_ylabel("Density")
+    ax.set_title("Population vs Sample - Signal 2")
+    ax.legend()
+    st.pyplot(fig)
+
+st.write("Analysis Completed! 🚀")
+
+# Create requirements.txt file
+requirements = """
+streamlit
+pandas
+matplotlib
+numpy
+scipy
+"""
+
+with open("requirements.txt", "w") as f:
+    f.write(requirements)
+
+st.write("Generated requirements.txt for deployment.")
